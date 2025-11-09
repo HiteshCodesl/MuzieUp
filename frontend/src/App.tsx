@@ -1,10 +1,11 @@
+import { Header } from "./Utils/Header";
 
 function App() {
 
   return (
-  <>
-    <h1>Hello world</h1>
-  </>
+    <div className="bg-[#121212] text-white h-screen w-screen">
+      <Header />
+    </div>
   )
 }
 
