@@ -10,73 +10,76 @@ import { auth } from "../middleware/auth.js";
 dotenv.config();
 const router = express.Router();
 
-router.post('/signup', async(req, res) => {
-    
+router.post('/signup', async (req, res) => {
+
     const parsedData = signUpSchema.safeParse(req.body);
-    
-    if(!parsedData.success){
+
+    if (!parsedData.success) {
         return res.status(401).json("wrong credentials")
     }
-    const {email, username, password} = parsedData.data;
-    
-    try{
-    const isUserAlreadyExist = await pool.query('SELECT FROM users WHERE email = $1', [email]);
+    const { email, username, password } = parsedData.data;
 
-    if(isUserAlreadyExist.rows.length > 0){
-        return res.status(401).json("user already exist, try signing in")
-    }
+    try {
+        const isUserAlreadyExist = await pool.query('SELECT FROM users WHERE email = $1', [email]);
 
-    const hashedPassword = await bcrypt.hash(password, 5);
+        if (isUserAlreadyExist.rows.length > 0) {
+            return res.status(401).json("user already exist, try signing in")
+        }
 
-    const user = await pool.query('INSERT INTO USERS(username, email, password) VALUES($1, $2,$3) RETURNING id, username, email', [username, email, hashedPassword]);
+        const hashedPassword = await bcrypt.hash(password, 5);
 
-    if(user.rows.length < 0){
-        return res.status(401).json("failed to create a user, try again")
-    }
-       return res.status(200).json({"user signed up successfully": user.rows[0]});
-    }catch(error){
-      return console.log("error in signup", error)
+        const user = await pool.query('INSERT INTO USERS(username, email, password) VALUES($1, $2,$3) RETURNING id, username, email', [username, email, hashedPassword]);
+
+        if (user.rows.length < 0) {
+            return res.status(401).json("failed to create a user, try again")
+        }
+        const token = jwt.sign({
+            id: user.rows[0].id,
+        }, process.env.JWT_SECRET! )
+
+        return res.status(200).json({ "user signed up successfully": token});
+    } catch (error) {
+        return console.log("error in signup", error)
     }
 })
 
 
-router.post('/login', async(req, res) => {
-    
+router.post('/login', async (req, res) => {
+
     const parsedData = signInSchema.safeParse(req.body);
 
-    if(!parsedData.success){
+    if (!parsedData.success) {
         return res.status(401).json("wrong credentials")
+    }    
+    const { email, password } = parsedData.data;
+    console.log('passed passwrd' , password, email);
+    try {
+        const isUserExists = await pool.query('SELECT id, username, password FROM users WHERE email=$1', [email]);
+        console.log("checked db user data", isUserExists);
+        if (!isUserExists) {
+            return res.status(404).json("user not found");
+        }
+        console.log("password after checking user is exists,",  isUserExists.rows[0].password);
+        const checkPassword = await bcrypt.compare(password, isUserExists.rows[0].password);
+
+        if (!checkPassword) {
+            return res.status(404).json("username or password is wrong");
+        }
+        console.log("username", isUserExists.rows[0].username)
+
+        const token = jwt.sign({
+            id: isUserExists.rows[0].id,
+        }, process.env.JWT_SECRET!)
+
+        if (token) {
+            res.status(200).json({ token: token })
+        }
+    } catch (error) {
+        return console.log("error while signing in", error)
     }
-
-    const {email, password} = parsedData.data;
-   
-   try{
-   const isUserExists = await pool.query('SELECT id, username, password FROM users WHERE email=$1', [email]);
-
-   if(!isUserExists){
-    return res.status(404).json("user not found");
-   }
-
-   const checkPassword = await bcrypt.compare(password, isUserExists.rows[0].password);
-
-   if(!checkPassword){
-    return res.status(404).json("username or password is wrong");
-   }
-     console.log("username", isUserExists.rows[0].username)
-
-   const token = jwt.sign({
-      id: isUserExists.rows[0].id,
-   }, process.env.JWT_SECRET!)
-
-   if(token){
-      res.status(200).json({token: token})
-   }
-   }catch(error){
-    return console.log("error while signing in", error)
-   }
 })
 
-router.get('/profile', auth, async(req, res) => {
+router.get('/profile', auth, async (req, res) => {
     //@ts-ignore
     const id = req.id;
     console.log("userId in profile", id);
@@ -84,7 +87,7 @@ router.get('/profile', auth, async(req, res) => {
 
     console.log("userprofile", user.rows[0]);
 
-    if(user){
+    if (user) {
         return res.status(200).json(user.rows[0]);
     }
 })
